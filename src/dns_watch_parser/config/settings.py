@@ -37,6 +37,19 @@ class ParserSettings:
 
 
 @dataclass(slots=True)
+class BrowserSettings:
+    mode: str = "http"
+    cdp_url: str = "http://127.0.0.1:9222"
+    storage_state_path: Path = Path("tmp/state/dns_browser_state.json")
+    page_wait_until: str = "domcontentloaded"
+    page_wait_selector: str = ""
+    extra_wait_ms: int = 1500
+    auto_scroll: bool = True
+    scroll_steps: int = 4
+    proxy_server: str = ""
+
+
+@dataclass(slots=True)
 class OutputSettings:
     dir: Path = Path("brand_exports")
     filename_prefix: str = "dns_watch"
@@ -56,6 +69,7 @@ class TelegramSettings:
 @dataclass(slots=True)
 class Settings:
     parser: ParserSettings = field(default_factory=ParserSettings)
+    browser: BrowserSettings = field(default_factory=BrowserSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
     tmp: TmpSettings = field(default_factory=TmpSettings)
     telegram: TelegramSettings = field(default_factory=TelegramSettings)

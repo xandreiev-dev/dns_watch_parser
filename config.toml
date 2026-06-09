@@ -16,6 +16,19 @@ user_agents = [
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
 ]
 
+[browser]
+# DNS often returns anti-bot 401/403 for plain HTTP clients. Use "cdp" after
+# launching Chrome with --remote-debugging-port=9222 and logging in once by hand.
+mode = "http" # http, playwright, cdp
+cdp_url = "http://127.0.0.1:9222"
+storage_state_path = "tmp/state/dns_browser_state.json"
+page_wait_until = "domcontentloaded"
+page_wait_selector = ""
+extra_wait_ms = 1500
+auto_scroll = true
+scroll_steps = 4
+proxy_server = ""
+
 [output]
 dir = "brand_exports"
 filename_prefix = "dns_watch"

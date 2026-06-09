@@ -11,7 +11,7 @@ from dns_watch_parser.models.product import json_dumps
 from dns_watch_parser.normalizers import extract_article, extract_delivery_days, extract_warranty_days, normalize_brand, normalize_price
 from dns_watch_parser.normalizers.text import clean_text
 
-from .extractor import extract_breadcrumbs, extract_specs, find_json_ld_product, first_meta, regex_first
+from .extractor import deep_find_values, embedded_json_objects, extract_breadcrumbs, extract_specs, find_json_ld_product, first_meta, regex_first
 
 
 class ProductParser:
@@ -59,12 +59,14 @@ def parse_product_html(
 ) -> ProductRecord:
     soup = BeautifulSoup(html, "html.parser")
     product_json = find_json_ld_product(soup)
+    embedded_json = embedded_json_objects(soup)
     text = clean_text(soup.get_text(" ", strip=True))
 
     title = clean_text(
         str(product_json.get("name") or "")
         or first_meta(soup, "og:title", "twitter:title")
-        or _first_css_text(soup, ["h1", ".product-card-top__title", "[data-product-title]"])
+        or _first_css_text(soup, ["h1", ".product-card-top__title", "[data-product-title]", "[itemprop=name]"])
+        or _first_deep_value(embedded_json, {"name", "title"})
     )
     image_url = _extract_image(product_json, soup)
     offers = _as_dict(product_json.get("offers"))
@@ -72,8 +74,14 @@ def parse_product_html(
     specs = extract_specs(soup)
     warranty = _first_spec(specs, ["гарантия", "срок гарантии"]) or regex_first([r"(гарантия[^.]{0,80})"], text)
     delivery_text = regex_first([r"((?:доставка|самовывоз)[^.]{0,120})"], text)
-    availability = clean_text(str(offers.get("availability") or ""))
-    price = normalize_price(offers.get("price") or regex_first([r"(\d[\d\s]{2,}\s*₽)",], text))
+    availability = clean_text(str(offers.get("availability") or _first_css_text(soup, ["[class*=availability]", "[class*=stock]"])))
+    price = normalize_price(
+        offers.get("price")
+        or first_meta(soup, "product:price:amount", "og:price:amount")
+        or _first_attr(soup, ["[data-price]", "[itemprop=price]"], ["data-price", "content"])
+        or _first_deep_value(embedded_json, {"price", "currentprice"})
+        or regex_first([r"(\d[\d\s]{2,}\s*₽)"], text)
+    )
     old_price = normalize_price(regex_first([r"(?:старая цена|до скидки)\D{0,20}(\d[\d\s]{2,}\s*₽)"], text))
     rating = _to_float(aggregate_rating.get("ratingValue") or regex_first([r"(\d[.,]\d{1,2})\s*\|\s*\d+\s*отзы"], text))
     reviews = _to_int(aggregate_rating.get("reviewCount") or regex_first([r"(\d+(?:[.,]\d+)?\s*[kк]?)\s*отзы"], text))
@@ -104,7 +112,7 @@ def parse_product_html(
         warranty=warranty,
         warranty_days=extract_warranty_days(warranty),
         specs_json=json_dumps(specs),
-        raw_payload_json=json_dumps({"json_ld_product": product_json}),
+        raw_payload_json=json_dumps({"json_ld_product": product_json, "embedded_json_count": len(embedded_json)}),
         case_size=_extract_case_size(title, specs),
         color=_extract_color(title, specs),
         connectivity=_extract_connectivity(title, specs),
@@ -125,6 +133,27 @@ def _first_css_text(soup: BeautifulSoup, selectors: list[str]) -> str:
         node = soup.select_one(selector)
         if node:
             return clean_text(node.get_text(" ", strip=True))
+    return ""
+
+
+def _first_attr(soup: BeautifulSoup, selectors: list[str], attrs: list[str]) -> str:
+    for selector in selectors:
+        node = soup.select_one(selector)
+        if not node:
+            continue
+        for attr in attrs:
+            value = node.get(attr)
+            if value:
+                return clean_text(str(value))
+    return ""
+
+
+def _first_deep_value(objects: list[dict[str, Any]], keys: set[str]) -> str:
+    normalized_keys = {key.lower() for key in keys}
+    for obj in objects:
+        for value in deep_find_values(obj, normalized_keys):
+            if isinstance(value, (str, int, float)) and str(value).strip():
+                return clean_text(str(value))
     return ""
 
 

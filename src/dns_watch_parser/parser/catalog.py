@@ -12,6 +12,7 @@ from .pagination import page_url
 
 
 PRODUCT_PATH_RE = re.compile(r"/product/(?:[a-z0-9]{8,32}/)?[^\"'#?\s]+/?", re.IGNORECASE)
+ABSOLUTE_PRODUCT_RE = re.compile(r"https://www\.dns-shop\.ru/product/[^\"'\\<>\s]+/?", re.IGNORECASE)
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +59,10 @@ def extract_product_urls(html: str, base_url: str = "https://www.dns-shop.ru") -
 
     for match in PRODUCT_PATH_RE.finditer(html):
         normalized = normalize_product_url(urljoin(base_url, match.group(0)))
+        if normalized:
+            urls.setdefault(normalized, None)
+    for match in ABSOLUTE_PRODUCT_RE.finditer(html):
+        normalized = normalize_product_url(match.group(0).replace("\\/", "/"))
         if normalized:
             urls.setdefault(normalized, None)
     return list(urls)

@@ -46,6 +46,35 @@ def find_json_ld_product(soup: BeautifulSoup) -> dict[str, Any]:
     return {}
 
 
+def embedded_json_objects(soup: BeautifulSoup) -> list[dict[str, Any]]:
+    objects: list[dict[str, Any]] = []
+    for script in soup.find_all("script"):
+        raw = script.string or script.get_text()
+        if not raw or ("product" not in raw.lower() and "price" not in raw.lower()):
+            continue
+        for candidate in _json_object_candidates(raw):
+            try:
+                payload = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                objects.append(payload)
+    return objects
+
+
+def deep_find_values(value: Any, keys: set[str]) -> list[Any]:
+    found: list[Any] = []
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if str(key).lower() in keys:
+                found.append(nested)
+            found.extend(deep_find_values(nested, keys))
+    elif isinstance(value, list):
+        for item in value:
+            found.extend(deep_find_values(item, keys))
+    return found
+
+
 def extract_breadcrumbs(soup: BeautifulSoup) -> str:
     items: list[str] = []
     for obj in json_ld_objects(soup):
@@ -87,4 +116,44 @@ def regex_first(patterns: list[str], text: str, flags: int = re.IGNORECASE) -> s
         match = re.search(pattern, text, flags=flags)
         if match:
             return clean_text(match.group(1))
+    return ""
+
+
+def _json_object_candidates(raw: str) -> list[str]:
+    candidates: list[str] = []
+    for marker in ("window.__INITIAL_STATE__", "window.__NUXT__", "__NEXT_DATA__"):
+        pos = raw.find(marker)
+        if pos < 0:
+            continue
+        brace = raw.find("{", pos)
+        if brace >= 0:
+            candidate = _balanced_json(raw, brace)
+            if candidate:
+                candidates.append(candidate)
+    return candidates
+
+
+def _balanced_json(raw: str, start: int) -> str:
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(start, len(raw)):
+        char = raw[index]
+        if escape:
+            escape = False
+            continue
+        if char == "\\":
+            escape = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return raw[start : index + 1]
     return ""

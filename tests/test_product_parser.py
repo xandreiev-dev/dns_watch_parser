@@ -31,3 +31,27 @@ def test_parse_product_json_ld():
     assert record.article == "5439187"
     assert record.rating == 4.8
     assert record.reviews == 120
+
+
+def test_parse_product_embedded_json_price_fallback():
+    html = """
+    <html>
+      <body>
+        <h1>Смарт-часы Garmin Venu 3</h1>
+        <script>
+          window.__INITIAL_STATE__ = {
+            "product": {"price": 45990, "title": "Смарт-часы Garmin Venu 3"}
+          };
+        </script>
+      </body>
+    </html>
+    """
+
+    record = parse_product_html(
+        html,
+        url="https://www.dns-shop.ru/product/6705b978851ded20/smart-casy-garmin-venu-3/",
+        known_brands=["Garmin"],
+    )
+
+    assert record.brand == "Garmin"
+    assert record.price == 45990

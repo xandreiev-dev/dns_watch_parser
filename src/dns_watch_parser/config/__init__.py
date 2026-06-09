@@ -1,8 +1,9 @@
 from .loader import load_settings
-from .settings import OutputSettings, ParserSettings, Settings, TelegramSettings, TmpSettings
+from .settings import BrowserSettings, OutputSettings, ParserSettings, Settings, TelegramSettings, TmpSettings
 
 __all__ = [
     "OutputSettings",
+    "BrowserSettings",
     "ParserSettings",
     "Settings",
     "TelegramSettings",

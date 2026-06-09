@@ -23,6 +23,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=None, help="Limit product URLs")
     parser.add_argument("--brand", default="", help="Brand hint/filter")
     parser.add_argument("--dry-run", action="store_true", help="Small run without external integrations")
+    parser.add_argument("--browser-mode", choices=["http", "playwright", "cdp"], default="", help="Override browser mode")
+    parser.add_argument("--cdp-url", default="", help="Override Chrome CDP URL")
+    parser.add_argument("--retry-failed", action="store_true", help="Process URLs from failed_urls checkpoint first")
     parser.add_argument("--log-level", default="INFO", help="Logging level")
     return parser
 
@@ -51,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
         notifier.send_message(f"DNS Watch Parser started. Output: {output_path}")
 
     user_agents = settings.parser.user_agents or [settings.parser.user_agent]
+    browser_mode = args.browser_mode or settings.browser.mode
+    cdp_url = args.cdp_url or settings.browser.cdp_url
     client = BrowserClient(
         timeout=settings.parser.request_timeout,
         user_agents=[agent for agent in user_agents if agent],
@@ -58,6 +63,15 @@ def main(argv: list[str] | None = None) -> int:
         retry_policy=RetryPolicy(max_retries=settings.parser.max_retries),
         use_playwright_fallback=settings.parser.use_playwright_fallback,
         headless=settings.parser.headless,
+        browser_mode=browser_mode,
+        cdp_url=cdp_url,
+        storage_state_path=settings.browser.storage_state_path,
+        page_wait_until=settings.browser.page_wait_until,
+        page_wait_selector=settings.browser.page_wait_selector,
+        extra_wait_ms=settings.browser.extra_wait_ms,
+        auto_scroll=settings.browser.auto_scroll,
+        scroll_steps=settings.browser.scroll_steps,
+        proxy_server=settings.browser.proxy_server,
     )
     writer = StreamingXlsxWriter(output_path)
     started_at = datetime.now(timezone.utc)
@@ -74,11 +88,16 @@ def main(argv: list[str] | None = None) -> int:
             region=os.getenv("DNS_REGION", ""),
         )
 
-        product_urls = catalog.collect_product_urls(
-            settings.start_urls,
-            max_pages=settings.parser.max_pages_per_brand,
-            limit=limit,
-        )
+        if args.retry_failed and state.failed_urls:
+            product_urls = list(dict.fromkeys(state.failed_urls))
+            if limit:
+                product_urls = product_urls[:limit]
+        else:
+            product_urls = catalog.collect_product_urls(
+                settings.start_urls,
+                max_pages=settings.parser.max_pages_per_brand,
+                limit=limit,
+            )
         total_urls = len(product_urls)
         processed = state.processed_set
 
@@ -92,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 writer.append(record)
                 state_store.mark_processed(state, url)
+                state_store.clear_failed(state, url)
                 processed = state.processed_set
                 logger.info("Processed %s", url)
             except Exception as exc:

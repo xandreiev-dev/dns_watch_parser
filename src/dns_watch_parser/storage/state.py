@@ -50,3 +50,7 @@ class StateStore:
         if url not in set(state.failed_urls):
             state.failed_urls.append(url)
         self.save(state)
+
+    def clear_failed(self, state: ParserState, url: str) -> None:
+        state.failed_urls = [failed_url for failed_url in state.failed_urls if failed_url != url]
+        self.save(state)
