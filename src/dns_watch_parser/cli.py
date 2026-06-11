@@ -76,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     writer = StreamingXlsxWriter(output_path)
     started_at = datetime.now(timezone.utc)
     total_urls = 0
+    error_samples: list[str] = []
 
     try:
         catalog = CatalogParser(client)
@@ -117,8 +118,8 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as exc:
                 logger.warning("Failed to parse %s: %s", url, exc)
                 state_store.mark_failed(state, url)
-                if not args.dry_run:
-                    notifier.send_message(f"DNS parser error for URL: {url}\n{exc}")
+                if len(error_samples) < 5:
+                    error_samples.append(f"{url} :: {exc}")
     finally:
         writer.close()
         client.close()
@@ -135,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     logger.info("\n%s", summary)
     if not args.dry_run:
+        if error_samples:
+            logger.info("Error samples:\n%s", "\n".join(error_samples))
         notifier.send_message(summary)
         notifier.send_document(output_path, caption="DNS watch parser XLSX")
     return 0
