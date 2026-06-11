@@ -73,7 +73,7 @@ def parse_product_html(
     aggregate_rating = _as_dict(product_json.get("aggregateRating"))
     specs = extract_specs(soup)
     warranty = _first_spec(specs, ["гарантия", "срок гарантии"]) or regex_first([r"(гарантия[^.]{0,80})"], text)
-    delivery_text = regex_first([r"((?:доставка|самовывоз)[^.]{0,120})"], text)
+    delivery_text = _extract_delivery_text(soup, text)
     availability = clean_text(str(offers.get("availability") or _first_css_text(soup, ["[class*=availability]", "[class*=stock]"])))
     price = normalize_price(
         offers.get("price")
@@ -134,6 +134,37 @@ def _first_css_text(soup: BeautifulSoup, selectors: list[str]) -> str:
         if node:
             return clean_text(node.get_text(" ", strip=True))
     return ""
+
+
+def _extract_delivery_text(soup: BeautifulSoup, page_text: str) -> str:
+    selectors = [
+        "[class*=delivery]",
+        "[class*=pickup]",
+        "[class*=order-avail]",
+        "[data-commerce-target*=delivery]",
+    ]
+    for selector in selectors:
+        value = _first_css_text(soup, [selector])
+        if _looks_like_delivery(value):
+            return value
+
+    patterns = [
+        r"((?:доставка|самовывоз)[^.;]{0,100}(?:сегодня|завтра|\d{1,2}\s*(?:дн|день|дня|дней|января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)))",
+    ]
+    value = regex_first(patterns, page_text)
+    return value if _looks_like_delivery(value) else ""
+
+
+def _looks_like_delivery(value: str) -> bool:
+    if not value:
+        return False
+    lowered = value.lower()
+    if len(value) > 220:
+        return False
+    navigation_markers = ("покупателям", "юрлицам", "клуб dns", "вакансии", "вернуться на главную")
+    if any(marker in lowered for marker in navigation_markers):
+        return False
+    return "доставка" in lowered or "самовывоз" in lowered
 
 
 def _first_attr(soup: BeautifulSoup, selectors: list[str], attrs: list[str]) -> str:

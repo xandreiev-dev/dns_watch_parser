@@ -55,3 +55,30 @@ def test_parse_product_embedded_json_price_fallback():
 
     assert record.brand == "Garmin"
     assert record.price == 45990
+
+
+def test_parse_product_ignores_navigation_as_delivery():
+    html = """
+    <html>
+      <head>
+        <script type="application/ld+json">
+        {
+          "@type": "Product",
+          "name": "Смарт-часы Apple Watch SE",
+          "offers": {"price": "24990", "availability": "https://schema.org/InStock"}
+        }
+        </script>
+      </head>
+      <body>
+        Доставка Покупателям Юрлицам Клуб DNS Предложения брендов Вакансии
+      </body>
+    </html>
+    """
+
+    record = parse_product_html(
+        html,
+        url="https://www.dns-shop.ru/product/c8e4f1bf8dfad0a4/smart-casy-apple-watch-se/",
+        known_brands=["Apple"],
+    )
+
+    assert record.delivery_text == ""
