@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -10,10 +10,18 @@ from dns_watch_parser.models import OUTPUT_COLUMNS, ProductRecord
 from dns_watch_parser.utils.paths import ensure_dir, safe_slug
 
 
-def build_output_path(output_dir: str | Path, prefix: str, brand: str | None = None) -> Path:
+def build_output_path(
+    output_dir: str | Path,
+    prefix: str,
+    brand: str | None = None,
+    *,
+    include_timestamp: bool = True,
+) -> Path:
     ensure_dir(output_dir)
     suffix = f"_{safe_slug(brand)}" if brand else ""
-    return Path(output_dir) / f"{prefix}{suffix}_{date.today().isoformat()}.xlsx"
+    now = datetime.now()
+    stamp = now.strftime("%Y-%m-%d_%H-%M-%S") if include_timestamp else now.date().isoformat()
+    return Path(output_dir) / f"{prefix}{suffix}_{stamp}.xlsx"
 
 
 class StreamingXlsxWriter:

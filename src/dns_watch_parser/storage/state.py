@@ -11,6 +11,7 @@ from dns_watch_parser.utils.dates import utc_now_iso
 class ParserState:
     processed_urls: list[str] = field(default_factory=list)
     failed_urls: list[str] = field(default_factory=list)
+    failed_reasons: dict[str, str] = field(default_factory=dict)
     current_brand: str = ""
     current_page: int = 0
     started_at: str = field(default_factory=utc_now_iso)
@@ -44,13 +45,17 @@ class StateStore:
     def mark_processed(self, state: ParserState, url: str) -> None:
         if url not in state.processed_set:
             state.processed_urls.append(url)
+        state.failed_reasons.pop(url, None)
         self.save(state)
 
-    def mark_failed(self, state: ParserState, url: str) -> None:
+    def mark_failed(self, state: ParserState, url: str, reason: str = "") -> None:
         if url not in set(state.failed_urls):
             state.failed_urls.append(url)
+        if reason:
+            state.failed_reasons[url] = reason[:1000]
         self.save(state)
 
     def clear_failed(self, state: ParserState, url: str) -> None:
         state.failed_urls = [failed_url for failed_url in state.failed_urls if failed_url != url]
+        state.failed_reasons.pop(url, None)
         self.save(state)

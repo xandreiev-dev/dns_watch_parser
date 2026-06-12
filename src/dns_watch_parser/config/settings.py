@@ -47,12 +47,16 @@ class BrowserSettings:
     auto_scroll: bool = True
     scroll_steps: int = 4
     proxy_server: str = ""
+    reuse_page: bool = False
+    browser_retries: int = 2
+    browser_connect_timeout: int = 10
 
 
 @dataclass(slots=True)
 class OutputSettings:
     dir: Path = Path("brand_exports")
     filename_prefix: str = "dns_watch"
+    include_timestamp: bool = True
 
 
 @dataclass(slots=True)

@@ -26,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--browser-mode", choices=["http", "playwright", "cdp"], default="", help="Override browser mode")
     parser.add_argument("--cdp-url", default="", help="Override Chrome CDP URL")
     parser.add_argument("--retry-failed", action="store_true", help="Process URLs from failed_urls checkpoint first")
+    parser.add_argument("--no-telegram", action="store_true", help="Disable Telegram for this run")
     parser.add_argument("--log-level", default="INFO", help="Logging level")
     return parser
 
@@ -44,14 +45,14 @@ def main(argv: list[str] | None = None) -> int:
         state_store.reset()
     state = state_store.load() if (args.resume or settings.parser.resume_enabled) else state_store.load().__class__()
 
-    output_path = build_output_path(settings.output.dir, settings.output.filename_prefix, args.brand or None)
+    output_path = build_output_path(
+        settings.output.dir,
+        settings.output.filename_prefix,
+        args.brand or None,
+        include_timestamp=settings.output.include_timestamp,
+    )
     state.output_file = str(output_path)
     state_store.save(state)
-
-    telegram_settings = TelegramRuntimeSettings.from_env(enabled_default=settings.telegram.enabled)
-    notifier = TelegramNotifier(telegram_settings)
-    if not args.dry_run:
-        notifier.send_message(f"DNS Watch Parser started. Output: {output_path}")
 
     user_agents = settings.parser.user_agents or [settings.parser.user_agent]
     browser_mode = args.browser_mode or settings.browser.mode
@@ -72,7 +73,24 @@ def main(argv: list[str] | None = None) -> int:
         auto_scroll=settings.browser.auto_scroll,
         scroll_steps=settings.browser.scroll_steps,
         proxy_server=settings.browser.proxy_server,
+        reuse_page=settings.browser.reuse_page,
+        browser_retries=settings.browser.browser_retries,
+        browser_connect_timeout=settings.browser.browser_connect_timeout,
     )
+    try:
+        client.check_health()
+    except Exception as exc:
+        client.close()
+        logger.error("Browser preflight failed: %s", exc)
+        return 2
+
+    telegram_settings = TelegramRuntimeSettings.from_env(enabled_default=settings.telegram.enabled)
+    if args.no_telegram:
+        telegram_settings.enabled = False
+    notifier = TelegramNotifier(telegram_settings)
+    if not args.dry_run:
+        notifier.send_message(f"DNS Watch Parser started. Output: {output_path}")
+
     writer = StreamingXlsxWriter(output_path)
     started_at = datetime.now(timezone.utc)
     total_urls = 0
@@ -117,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
                 logger.info("Processed %s", url)
             except Exception as exc:
                 logger.warning("Failed to parse %s: %s", url, exc)
-                state_store.mark_failed(state, url)
+                state_store.mark_failed(state, url, str(exc))
                 if len(error_samples) < 5:
                     error_samples.append(f"{url} :: {exc}")
     finally:

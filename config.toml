@@ -28,10 +28,14 @@ extra_wait_ms = 1500
 auto_scroll = true
 scroll_steps = 4
 proxy_server = ""
+reuse_page = false
+browser_retries = 2
+browser_connect_timeout = 10
 
 [output]
 dir = "brand_exports"
 filename_prefix = "dns_watch"
+include_timestamp = true
 
 [tmp]
 dir = "tmp"

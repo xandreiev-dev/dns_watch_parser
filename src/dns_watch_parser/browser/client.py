@@ -31,6 +31,9 @@ class BrowserClient:
     auto_scroll: bool = True
     scroll_steps: int = 4
     proxy_server: str = ""
+    reuse_page: bool = False
+    browser_retries: int = 2
+    browser_connect_timeout: int = 10
     _client: httpx.Client = field(init=False, repr=False)
     _playwright: object | None = field(init=False, default=None, repr=False)
     _browser: object | None = field(init=False, default=None, repr=False)
@@ -47,6 +50,11 @@ class BrowserClient:
     def close(self) -> None:
         self._client.close()
         self._save_storage_state()
+        if self._page is not None and not self.reuse_page:
+            try:
+                self._page.close()
+            except Exception:
+                pass
         if self._browser is not None and self._owns_browser:
             self._browser.close()
         if self._playwright is not None:
@@ -64,7 +72,7 @@ class BrowserClient:
 
     def get_text(self, url: str) -> str:
         if self.browser_mode in {"playwright", "cdp"}:
-            return self._get_text_with_browser(url)
+            return self._get_text_with_browser_retry(url)
 
         def request() -> str:
             assert self.rate_limiter is not None
@@ -83,6 +91,13 @@ class BrowserClient:
         assert self.retry_policy is not None
         return self.retry_policy.run(request)
 
+    def check_health(self) -> None:
+        if self.browser_mode != "cdp":
+            return
+        url = self.cdp_url.rstrip("/") + "/json/version"
+        response = self._client.get(url, timeout=self.browser_connect_timeout)
+        response.raise_for_status()
+
     def _ensure_browser_page(self):
         if self._page is not None:
             return self._page
@@ -94,7 +109,7 @@ class BrowserClient:
         self._playwright = sync_playwright().start()
         chromium = self._playwright.chromium
         if self.browser_mode == "cdp":
-            self._browser = chromium.connect_over_cdp(self.cdp_url, timeout=self.timeout * 1000)
+            self._browser = chromium.connect_over_cdp(self.cdp_url, timeout=self.browser_connect_timeout * 1000)
             contexts = list(self._browser.contexts)
             self._context = contexts[0] if contexts else self._browser.new_context()
             self._owns_browser = False
@@ -110,8 +125,22 @@ class BrowserClient:
             self._context = self._browser.new_context(**context_kwargs)
 
         pages = list(self._context.pages)
-        self._page = pages[0] if pages else self._context.new_page()
+        self._page = (pages[0] if pages else self._context.new_page()) if self.reuse_page else self._context.new_page()
         return self._page
+
+    def _get_text_with_browser_retry(self, url: str) -> str:
+        last_exc: Exception | None = None
+        for attempt in range(self.browser_retries + 1):
+            try:
+                return self._get_text_with_browser(url)
+            except Exception as exc:
+                last_exc = exc
+                logger.warning("Browser request failed for %s: %s", url, exc)
+                self._reset_browser_page()
+                if attempt >= self.browser_retries:
+                    break
+        assert last_exc is not None
+        raise last_exc
 
     def _get_text_with_browser(self, url: str) -> str:
         assert self.rate_limiter is not None
@@ -129,6 +158,9 @@ class BrowserClient:
             _auto_scroll(page, max(0, self.scroll_steps))
         html = page.content()
         self._save_storage_state()
+        if not self.reuse_page:
+            page.close()
+            self._page = None
         return html
 
     def _save_storage_state(self) -> None:
@@ -139,6 +171,14 @@ class BrowserClient:
             self._context.storage_state(path=str(self.storage_state_path))
         except Exception as exc:
             logger.debug("Could not save browser storage state: %s", exc)
+
+    def _reset_browser_page(self) -> None:
+        if self._page is not None:
+            try:
+                self._page.close()
+            except Exception:
+                pass
+            self._page = None
 
 
 def _auto_scroll(page, steps: int) -> None:

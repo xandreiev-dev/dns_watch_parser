@@ -56,11 +56,15 @@ def load_settings(path: str | Path = "config.toml") -> Settings:
         auto_scroll=bool(browser_raw.get("auto_scroll", True)),
         scroll_steps=int(browser_raw.get("scroll_steps", 4)),
         proxy_server=env_proxy or browser_raw.get("proxy_server", ""),
+        reuse_page=bool(browser_raw.get("reuse_page", False)),
+        browser_retries=int(browser_raw.get("browser_retries", 2)),
+        browser_connect_timeout=int(browser_raw.get("browser_connect_timeout", 10)),
     )
 
     output = OutputSettings(
         dir=_path(project_root, output_raw.get("dir", "brand_exports")),
         filename_prefix=output_raw.get("filename_prefix", "dns_watch"),
+        include_timestamp=bool(output_raw.get("include_timestamp", True)),
     )
     tmp = TmpSettings(
         dir=_path(project_root, tmp_raw.get("dir", "tmp")),

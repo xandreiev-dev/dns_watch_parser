@@ -15,7 +15,11 @@ def test_state_persists_processed_urls(tmp_path):
 def test_state_clears_failed_url_after_success(tmp_path):
     store = StateStore(tmp_path / "state.json")
     state = store.load()
-    store.mark_failed(state, "https://example.test/product/2/")
+    store.mark_failed(state, "https://example.test/product/2/", "timeout")
+    assert store.load().failed_reasons["https://example.test/product/2/"] == "timeout"
+
+    state = store.load()
     store.clear_failed(state, "https://example.test/product/2/")
 
     assert store.load().failed_urls == []
+    assert store.load().failed_reasons == {}

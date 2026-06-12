@@ -42,6 +42,25 @@ python -m playwright install chromium
 Do not store account passwords in `.env`. The parser can reuse cookies from the
 browser profile or `tmp/state/dns_browser_state.json`.
 
+Recommended production ramp-up:
+
+```powershell
+python run_parser.py --browser-mode cdp --limit 3 --reset-state --dry-run --no-telegram
+python run_parser.py --browser-mode cdp --limit 30 --reset-state --no-telegram
+python run_parser.py --browser-mode cdp --limit 100 --reset-state --no-telegram
+python run_parser.py --browser-mode cdp --reset-state --no-telegram
+```
+
+If some cards fail, inspect `tmp/state/dns_parser_state.json`. It stores both
+`failed_urls` and `failed_reasons`. To retry only failed cards:
+
+```powershell
+python run_parser.py --browser-mode cdp --retry-failed --limit 20 --no-telegram
+```
+
+Telegram is intended for run-level summaries only. Use `--no-telegram` while
+debugging parser quality.
+
 ## Tests
 
 ```powershell
