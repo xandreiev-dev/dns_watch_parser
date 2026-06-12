@@ -177,7 +177,7 @@ def _record_from_card(card, base_url: str, known_brands: list[str], source: str,
         warranty="",
         specs_json=json_dumps({"catalog_title": title}),
         raw_payload_json=json_dumps({"source": "catalog_card"}),
-        case_size=_first_match(title, [r"(\d{2}\s*mm)", r"(\d+(?:[.,]\d+)?\")"]),
+        case_size=_catalog_case_size(title),
         color=_catalog_color(title),
         connectivity=_catalog_connectivity(title),
         seller="DNS",
@@ -258,6 +258,12 @@ def _first_match(text: str, patterns: list[str]) -> str:
 
 def _catalog_color(title: str) -> str:
     return _first_match(title, [r"корпус\s*-\s*([^,\]]+)", r"ремешок\s*-\s*([^,\]]+)"])
+
+
+def _catalog_case_size(title: str) -> str:
+    # Catalog titles include display diagonals like 2", which are not case sizes.
+    # Only trust explicit millimeter values from the product name/spec snippet.
+    return _first_match(title, [r"(\d{2}\s*mm)"])
 
 
 def _catalog_connectivity(title: str) -> str:

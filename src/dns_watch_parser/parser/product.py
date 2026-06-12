@@ -245,10 +245,10 @@ def _first_spec(specs: dict[str, str], names: list[str]) -> str:
 
 
 def _extract_case_size(title: str, specs: dict[str, str]) -> str:
-    value = _first_spec(specs, ["диагональ", "размер корпуса", "размер"])
+    value = _first_spec(specs, ["размер корпуса"])
     if value:
         return value
-    return regex_first([r"(\d{2}\s*mm)", r"(\d+(?:[.,]\d+)?\")"], title)
+    return regex_first([r"(\d{2}\s*mm)"], title)
 
 
 def _extract_color(title: str, specs: dict[str, str]) -> str:

@@ -9,6 +9,8 @@ def extract_delivery_days(value: str | None) -> int | None:
     text = value.lower()
     if "сегодня" in text:
         return 0
+    if re.search(r"\b\d+\s*(?:ч|час|часа|часов)\b", text):
+        return 0
     if "завтра" in text:
         return 1
     match = re.search(r"(\d+)\s*(?:дн|день|дня|дней|сут)", text)

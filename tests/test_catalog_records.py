@@ -28,5 +28,22 @@ def test_extract_catalog_records_from_dns_card():
     assert record.rating == 4.91
     assert record.reviews == 2400
     assert record.stock_status == "in_stock"
+    assert record.delivery_days == 0
+    assert record.case_size == "46 mm"
     assert record.color == "черный"
     assert record.connectivity == "Bluetooth, NFC"
+
+
+def test_extract_catalog_records_does_not_use_display_inches_as_case_size():
+    html = """
+    <div class="catalog-product">
+      <a class="catalog-product__name ui-link ui-link_black" href="/product/abc123456789abcd/smart-casy-test-watch/">
+        Смарт-часы Xiaomi Watch [корпус - черный, 2", IPS, Bluetooth]
+      </a>
+      <div class="product-buy__price">2 999 ₽</div>
+    </div>
+    """
+
+    record = extract_catalog_records(html, known_brands=["Xiaomi"])[0]
+
+    assert record.case_size == ""
