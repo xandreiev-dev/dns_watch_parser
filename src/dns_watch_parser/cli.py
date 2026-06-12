@@ -27,6 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cdp-url", default="", help="Override Chrome CDP URL")
     parser.add_argument("--retry-failed", action="store_true", help="Process URLs from failed_urls checkpoint first")
     parser.add_argument("--no-telegram", action="store_true", help="Disable Telegram for this run")
+    parser.add_argument("--catalog-only", action="store_true", help="Export data directly from catalog cards")
     parser.add_argument("--log-level", default="INFO", help="Logging level")
     return parser
 
@@ -99,7 +100,12 @@ def main(argv: list[str] | None = None) -> int:
     consecutive_error_count = 0
 
     try:
-        catalog = CatalogParser(client)
+        catalog = CatalogParser(
+            client,
+            known_brands=settings.brands,
+            source=settings.parser.source,
+            shop_id=settings.parser.shop_id,
+        )
         product_parser = ProductParser(
             client,
             known_brands=settings.brands,
@@ -109,7 +115,24 @@ def main(argv: list[str] | None = None) -> int:
             region=os.getenv("DNS_REGION", ""),
         )
 
-        if args.retry_failed and state.failed_urls:
+        if args.catalog_only and not args.retry_failed:
+            records = catalog.collect_catalog_records(
+                settings.start_urls,
+                max_pages=settings.parser.max_pages_per_brand,
+                limit=limit,
+            )
+            total_urls = len(records)
+            processed = state.processed_set
+            for record in records:
+                if record.product_url in processed:
+                    continue
+                writer.append(record)
+                state_store.mark_processed(state, record.product_url)
+                state_store.clear_failed(state, record.product_url)
+                processed = state.processed_set
+                logger.info("Processed catalog card %s", record.product_url)
+            product_urls = []
+        elif args.retry_failed and state.failed_urls:
             product_urls = list(dict.fromkeys(state.failed_urls))
             if limit:
                 product_urls = product_urls[:limit]
@@ -119,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
                 max_pages=settings.parser.max_pages_per_brand,
                 limit=limit,
             )
-        total_urls = len(product_urls)
+        total_urls = total_urls or len(product_urls)
         processed = state.processed_set
 
         for url in product_urls:

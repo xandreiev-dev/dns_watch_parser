@@ -45,11 +45,16 @@ browser profile or `tmp/state/dns_browser_state.json`.
 Recommended production ramp-up:
 
 ```powershell
+python run_parser.py --browser-mode cdp --catalog-only --limit 30 --reset-state --no-telegram
 python run_parser.py --browser-mode cdp --limit 3 --reset-state --dry-run --no-telegram
 python run_parser.py --browser-mode cdp --limit 30 --reset-state --no-telegram
 python run_parser.py --browser-mode cdp --limit 100 --reset-state --no-telegram
 python run_parser.py --browser-mode cdp --reset-state --no-telegram
 ```
+
+Use `--catalog-only` for the fast matcher-oriented export. It reads product
+cards from catalog pages and does not open every product URL. Product pages are
+still useful for enriched fields such as full specs and numeric DNS SKU.
 
 If some cards fail, inspect `tmp/state/dns_parser_state.json`. It stores both
 `failed_urls` and `failed_reasons`. To retry only failed cards:
