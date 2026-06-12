@@ -29,7 +29,7 @@ auto_scroll = true
 scroll_steps = 4
 proxy_server = ""
 reuse_page = false
-browser_retries = 2
+browser_retries = 1
 browser_connect_timeout = 10
 
 [output]

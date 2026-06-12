@@ -95,6 +95,8 @@ def main(argv: list[str] | None = None) -> int:
     started_at = datetime.now(timezone.utc)
     total_urls = 0
     error_samples: list[str] = []
+    consecutive_error_key = ""
+    consecutive_error_count = 0
 
     try:
         catalog = CatalogParser(client)
@@ -138,6 +140,19 @@ def main(argv: list[str] | None = None) -> int:
                 state_store.mark_failed(state, url, str(exc))
                 if len(error_samples) < 5:
                     error_samples.append(f"{url} :: {exc}")
+                error_key = _error_key(exc)
+                if error_key == consecutive_error_key:
+                    consecutive_error_count += 1
+                else:
+                    consecutive_error_key = error_key
+                    consecutive_error_count = 1
+                if writer.rows_written == 0 and consecutive_error_count >= 3:
+                    logger.error(
+                        "Stopping early after %s identical startup failures: %s",
+                        consecutive_error_count,
+                        consecutive_error_key,
+                    )
+                    break
     finally:
         writer.close()
         client.close()
@@ -159,3 +174,8 @@ def main(argv: list[str] | None = None) -> int:
         notifier.send_message(summary)
         notifier.send_document(output_path, caption="DNS watch parser XLSX")
     return 0
+
+
+def _error_key(exc: Exception) -> str:
+    text = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
+    return text[:240]
