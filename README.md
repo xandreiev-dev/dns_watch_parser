@@ -55,6 +55,10 @@ python run_parser.py --browser-mode cdp --reset-state --no-telegram
 Use `--catalog-only` for the fast matcher-oriented export. It reads product
 cards from catalog pages and does not open every product URL. Product pages are
 still useful for enriched fields such as full specs and numeric DNS SKU.
+The parser also stops catalog pagination when a page contains no new products,
+so repeated DNS pages do not turn into a long no-op run.
+The default config targets the DNS smart-watch catalog only; children's watches
+should be added as a separate run if needed.
 
 If some cards fail, inspect `tmp/state/dns_parser_state.json`. It stores both
 `failed_urls` and `failed_reasons`. To retry only failed cards:

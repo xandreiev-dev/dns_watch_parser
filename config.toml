@@ -1,7 +1,7 @@
 [parser]
 source = "dns"
 shop_id = 0
-max_pages_per_brand = 0
+max_pages_per_brand = 30
 request_timeout = 30
 delay_min = 2
 delay_max = 6
@@ -57,11 +57,11 @@ items = [
   "Google",
   "OnePlus",
   "Oppo",
-  "Motorola"
+  "Motorola",
+  "Tecno"
 ]
 
 [start_urls]
 urls = [
-  "https://www.dns-shop.ru/catalog/recipe/782ee054089287e3/smart-casy/",
-  "https://www.dns-shop.ru/catalog/fa58a48980ca51bf/detskie-casy/"
+  "https://www.dns-shop.ru/catalog/recipe/782ee054089287e3/smart-casy/"
 ]

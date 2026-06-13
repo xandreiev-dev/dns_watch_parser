@@ -17,6 +17,7 @@ DEFAULT_BRANDS = [
     "OnePlus",
     "Oppo",
     "Motorola",
+    "Tecno",
 ]
 
 

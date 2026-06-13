@@ -1,4 +1,14 @@
-from dns_watch_parser.parser.catalog import extract_catalog_records
+from dns_watch_parser.parser.catalog import CatalogParser, extract_catalog_records
+
+
+class FakeClient:
+    def __init__(self, html: str):
+        self.html = html
+        self.calls = 0
+
+    def get_text(self, url: str) -> str:
+        self.calls += 1
+        return self.html
 
 
 def test_extract_catalog_records_from_dns_card():
@@ -47,3 +57,20 @@ def test_extract_catalog_records_does_not_use_display_inches_as_case_size():
     record = extract_catalog_records(html, known_brands=["Xiaomi"])[0]
 
     assert record.case_size == ""
+
+
+def test_collect_catalog_records_stops_on_duplicate_pages():
+    html = """
+    <div class="catalog-product">
+      <a class="catalog-product__name ui-link ui-link_black" href="/product/abc123456789abcd/smart-casy-test-watch/">
+        Смарт-часы Garmin Test Watch [корпус - черный, 46 mm, Bluetooth]
+      </a>
+    </div>
+    """
+    client = FakeClient(html)
+    parser = CatalogParser(client, known_brands=["Garmin"])
+
+    records = parser.collect_catalog_records(["https://example.test/catalog/"], max_pages=30)
+
+    assert len(records) == 1
+    assert client.calls == 3

@@ -45,11 +45,19 @@ class CatalogParser:
                     if empty_pages >= 2 or page == 1:
                         break
                     continue
-                empty_pages = 0
+                new_urls = 0
                 for url in urls:
-                    seen.setdefault(url, None)
+                    if url not in seen:
+                        seen[url] = None
+                        new_urls += 1
                     if limit and len(seen) >= limit:
                         return list(seen)
+                if new_urls == 0:
+                    empty_pages += 1
+                    if empty_pages >= 2:
+                        break
+                else:
+                    empty_pages = 0
         return list(seen)
 
     def collect_catalog_records(self, start_urls: list[str], max_pages: int = 0, limit: int | None = None) -> list[ProductRecord]:
@@ -77,11 +85,19 @@ class CatalogParser:
                     if empty_pages >= 2 or page == 1:
                         break
                     continue
-                empty_pages = 0
+                new_records = 0
                 for record in page_records:
-                    records.setdefault(record.product_url, record)
+                    if record.product_url not in records:
+                        records[record.product_url] = record
+                        new_records += 1
                     if limit and len(records) >= limit:
                         return list(records.values())
+                if new_records == 0:
+                    empty_pages += 1
+                    if empty_pages >= 2:
+                        break
+                else:
+                    empty_pages = 0
         return list(records.values())
 
 
