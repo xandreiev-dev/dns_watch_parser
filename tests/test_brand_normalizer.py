@@ -8,3 +8,7 @@ def test_brand_from_title():
 
 def test_brand_hint_wins():
     assert normalize_brand("Смарт-часы Watch", ["Garmin"], hint="Garmin") == "Garmin"
+
+
+def test_brand_fallback_from_unknown_catalog_title():
+    assert normalize_brand("Фитнес-браслет ZDK Sport Fitpro", ["Apple"]) == "ZDK"

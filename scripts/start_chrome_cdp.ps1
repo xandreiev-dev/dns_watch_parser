@@ -1,7 +1,7 @@
 param(
     [int]$Port = 9222,
     [string]$ProfileDir = "C:\work\dns_watch_parser\tmp\chrome-profile",
-    [string]$StartUrl = "https://www.dns-shop.ru/"
+    [string]$StartUrl = "https://www.dns-shop.ru/search/?q=%D1%81%D0%BC%D0%B0%D1%80%D1%82-%D1%87%D0%B0%D1%81%D1%8B&category=251c82c88ed24e77"
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,4 +31,5 @@ $args = @(
 
 Start-Process -FilePath $browser -ArgumentList $args
 Write-Host "Browser started on CDP port $Port with profile $ProfileDir"
-Write-Host "Open DNS/login once, then run: python run_parser.py --browser-mode cdp --limit 50"
+Write-Host "Open DNS/login once if needed, make sure search results are visible, then run:"
+Write-Host "python run_parser.py --browser-mode cdp --catalog-only --reset-state"

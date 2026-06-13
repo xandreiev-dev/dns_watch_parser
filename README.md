@@ -57,8 +57,11 @@ cards from catalog pages and does not open every product URL. Product pages are
 still useful for enriched fields such as full specs and numeric DNS SKU.
 The parser also stops catalog pagination when a page contains no new products,
 so repeated DNS pages do not turn into a long no-op run.
-The default config targets the DNS smart-watch catalog only; children's watches
-should be added as a separate run if needed.
+The default config targets the DNS search page for smart watches and bracelets.
+DNS loads this page lazily while scrolling, so `scroll_steps` is intentionally
+high enough to reach the full search result set shown by the site.
+If a long run leaves Chrome tabs at `chrome-error://chromewebdata/`, close the
+CDP Chrome window and start it again with `scripts\start_chrome_cdp.ps1`.
 
 If some cards fail, inspect `tmp/state/dns_parser_state.json`. It stores both
 `failed_urls` and `failed_reasons`. To retry only failed cards:

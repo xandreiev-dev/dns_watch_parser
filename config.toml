@@ -1,8 +1,8 @@
 [parser]
 source = "dns"
 shop_id = 0
-max_pages_per_brand = 30
-request_timeout = 30
+max_pages_per_brand = 1
+request_timeout = 60
 delay_min = 2
 delay_max = 6
 max_retries = 5
@@ -26,11 +26,11 @@ page_wait_until = "domcontentloaded"
 page_wait_selector = ""
 extra_wait_ms = 1500
 auto_scroll = true
-scroll_steps = 4
+scroll_steps = 90
 proxy_server = ""
-reuse_page = false
+reuse_page = true
 browser_retries = 1
-browser_connect_timeout = 10
+browser_connect_timeout = 30
 
 [output]
 dir = "brand_exports"
@@ -63,5 +63,5 @@ items = [
 
 [start_urls]
 urls = [
-  "https://www.dns-shop.ru/catalog/recipe/782ee054089287e3/smart-casy/"
+  "https://www.dns-shop.ru/search/?q=%D1%81%D0%BC%D0%B0%D1%80%D1%82-%D1%87%D0%B0%D1%81%D1%8B&category=251c82c88ed24e77"
 ]

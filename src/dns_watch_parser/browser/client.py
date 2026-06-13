@@ -93,6 +93,11 @@ class BrowserClient:
         assert self.retry_policy is not None
         return self.retry_policy.run(request)
 
+    def get_card_htmls(self, url: str, card_selector: str, link_selector: str) -> list[str]:
+        if self.browser_mode not in {"playwright", "cdp"}:
+            return []
+        return self._run_browser_card_fetch(url, card_selector, link_selector)
+
     def check_health(self) -> None:
         if self.browser_mode != "cdp":
             return
@@ -173,6 +178,28 @@ class BrowserClient:
             raise errors[0]
         return result["html"]
 
+    def _run_browser_card_fetch(self, url: str, card_selector: str, link_selector: str) -> list[str]:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self._get_card_htmls_async(url, card_selector, link_selector))
+
+        result: dict[str, list[str]] = {}
+        errors: list[BaseException] = []
+
+        def runner() -> None:
+            try:
+                result["cards"] = asyncio.run(self._get_card_htmls_async(url, card_selector, link_selector))
+            except BaseException as exc:
+                errors.append(exc)
+
+        thread = threading.Thread(target=runner, daemon=True)
+        thread.start()
+        thread.join()
+        if errors:
+            raise errors[0]
+        return result["cards"]
+
     async def _get_text_with_browser_async(self, url: str) -> str:
         assert self.rate_limiter is not None
         self.rate_limiter.wait()
@@ -205,8 +232,15 @@ class BrowserClient:
                         context_kwargs["storage_state"] = str(self.storage_state_path)
                     context = await browser.new_context(**context_kwargs)
 
-                page = await context.new_page()
-                await page.goto(url, wait_until=self.page_wait_until, timeout=self.timeout * 1000)
+                pages = list(context.pages)
+                page = pages[0] if self.reuse_page and pages else await context.new_page()
+                if _normalized_url(page.url) != _normalized_url(url):
+                    try:
+                        await page.goto(url, wait_until=self.page_wait_until, timeout=self.timeout * 1000)
+                    except Exception:
+                        if _normalized_url(page.url) != _normalized_url(url):
+                            raise
+                        logger.warning("Navigation failed, using already opened CDP page: %s", page.url)
                 if self.page_wait_selector:
                     try:
                         await page.wait_for_selector(self.page_wait_selector, timeout=self.timeout * 1000)
@@ -222,13 +256,101 @@ class BrowserClient:
                     await context.storage_state(path=str(self.storage_state_path))
                 return html
             finally:
-                if page is not None:
+                if page is not None and not self.reuse_page:
                     try:
                         await page.close()
                     except Exception:
                         pass
                 if browser is not None and self.browser_mode != "cdp":
                     await browser.close()
+
+    async def _get_card_htmls_async(self, url: str, card_selector: str, link_selector: str) -> list[str]:
+        assert self.rate_limiter is not None
+        self.rate_limiter.wait()
+
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError as exc:  # pragma: no cover
+            raise RuntimeError("Browser mode is enabled but playwright is not installed") from exc
+
+        async with async_playwright() as playwright:
+            chromium = playwright.chromium
+            browser = None
+            page = None
+            try:
+                browser, context, page = await self._open_async_page(chromium, url)
+                await page.keyboard.press("Home")
+                await page.wait_for_timeout(500)
+
+                cards_by_url: dict[str, str] = {}
+                stale_steps = 0
+                for _ in range(max(1, self.scroll_steps) + 1):
+                    batch = await page.locator(card_selector).evaluate_all(
+                        """(cards, linkSelector) => cards.map((card) => {
+                            const link = card.querySelector(linkSelector);
+                            return {url: link ? link.href : "", html: card.outerHTML};
+                        })""",
+                        link_selector,
+                    )
+                    before = len(cards_by_url)
+                    for item in batch:
+                        item_url = item.get("url") if isinstance(item, dict) else ""
+                        item_html = item.get("html") if isinstance(item, dict) else ""
+                        if item_url and item_html:
+                            cards_by_url.setdefault(item_url.split("?")[0], item_html)
+                    stale_steps = stale_steps + 1 if len(cards_by_url) == before else 0
+                    if stale_steps >= 10 and cards_by_url:
+                        break
+                    await page.mouse.wheel(0, 1800)
+                    await page.wait_for_timeout(350)
+
+                if self.storage_state_path is not None:
+                    self.storage_state_path.parent.mkdir(parents=True, exist_ok=True)
+                    await context.storage_state(path=str(self.storage_state_path))
+                return list(cards_by_url.values())
+            finally:
+                if page is not None and not self.reuse_page:
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
+                if browser is not None and self.browser_mode != "cdp":
+                    await browser.close()
+
+    async def _open_async_page(self, chromium, url: str):
+        if self.browser_mode == "cdp":
+            browser = await chromium.connect_over_cdp(
+                self.cdp_url,
+                timeout=self.browser_connect_timeout * 1000,
+            )
+            contexts = list(browser.contexts)
+            matching_page = _find_matching_page(contexts, url)
+            if self.reuse_page and matching_page is not None:
+                return browser, matching_page.context, matching_page
+            context = contexts[0] if contexts else await browser.new_context()
+        else:
+            launch_kwargs = {"headless": self.headless}
+            if self.proxy_server:
+                launch_kwargs["proxy"] = {"server": self.proxy_server}
+            browser = await chromium.launch(**launch_kwargs)
+            context_kwargs = {"user_agent": (self.user_agents or ["Mozilla/5.0"])[0]}
+            if self.storage_state_path and self.storage_state_path.exists():
+                context_kwargs["storage_state"] = str(self.storage_state_path)
+            context = await browser.new_context(**context_kwargs)
+
+        pages = list(context.pages)
+        page = pages[0] if self.reuse_page and pages else await context.new_page()
+        if _normalized_url(page.url) != _normalized_url(url):
+            try:
+                await page.goto(url, wait_until=self.page_wait_until, timeout=self.timeout * 1000)
+            except Exception:
+                matching_page = _find_matching_page(browser.contexts, url)
+                if matching_page is None:
+                    raise
+                page = matching_page
+                context = page.context
+                logger.warning("Navigation failed, using already opened CDP page: %s", page.url)
+        return browser, context, page
 
     def _get_text_with_browser(self, url: str) -> str:
         assert self.rate_limiter is not None
@@ -284,3 +406,16 @@ async def _auto_scroll_async(page, steps: int) -> None:
 def _looks_like_blocked_page(html: str) -> bool:
     lowered = html.lower()
     return "__qrator" in lowered or "qauth" in lowered or ("dns-shop" in lowered and "/product/" not in lowered)
+
+
+def _normalized_url(url: str) -> str:
+    return (url or "").split("#", 1)[0].rstrip("/")
+
+
+def _find_matching_page(contexts, url: str):
+    normalized = _normalized_url(url)
+    for context in contexts:
+        for page in context.pages:
+            if _normalized_url(page.url) == normalized:
+                return page
+    return None

@@ -35,7 +35,9 @@ class CatalogParser:
             for page in pages:
                 current_url = page_url(start_url, page)
                 try:
-                    html = self.client.get_text(current_url)
+                    get_card_htmls = getattr(self.client, "get_card_htmls", None)
+                    card_htmls = get_card_htmls(current_url, ".catalog-product", "a[href*='/product/']") if get_card_htmls else []
+                    html = "\n".join(card_htmls) if card_htmls else self.client.get_text(current_url)
                 except Exception as exc:
                     logger.warning("Catalog page is not available: %s (%s)", current_url, exc)
                     break

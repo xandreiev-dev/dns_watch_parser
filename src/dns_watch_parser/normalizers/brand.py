@@ -21,7 +21,7 @@ def normalize_brand(title: str, known_brands: list[str], hint: str = "") -> str:
     for alias, brand in ALIASES.items():
         if alias in source:
             return brand
-    return ""
+    return _fallback_from_title(title)
 
 
 def _display(value: str, known_brands: list[str]) -> str:
@@ -29,3 +29,14 @@ def _display(value: str, known_brands: list[str]) -> str:
         if brand.lower() == value.lower():
             return brand
     return value.strip()
+
+
+def _fallback_from_title(title: str) -> str:
+    value = re.sub(
+        r"^(?:смарт-часы|умные часы|спортивные часы|детские часы|фитнес-браслет|фитнес браслет)\s+",
+        "",
+        title.strip(),
+        flags=re.IGNORECASE,
+    )
+    match = re.match(r"([A-Za-zА-Яа-я0-9][A-Za-zА-Яа-я0-9+-]*)", value)
+    return match.group(1).strip() if match else ""
