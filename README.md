@@ -79,32 +79,6 @@ debugging parser quality.
 pytest
 ```
 
-## Windows Server Daily Run
-
-Install dependencies once:
-
-```bat
-cd /d C:\work\dns_watch_parser
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-.venv\Scripts\python.exe -m playwright install chromium
-```
-
-Create the daily Windows Task Scheduler task at 17:00:
-
-```bat
-scripts\install_daily_task.bat
-```
-
-Manual server run:
-
-```bat
-scripts\run_dns_parser.bat
-```
-
-The runner uses Chrome CDP on `127.0.0.1:9223`, so it does not conflict with
-the Ozon parser on `9222`. Logs are appended to `logs\dns_watch_parser_daily.log`.
-
 ## Notes
 
 - `.env`, `tmp`, cache/debug files, and XLSX exports are ignored by git.

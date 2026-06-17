@@ -33,12 +33,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
-    if wait_for_cdp(args.port, 1):
-        print(f"CDP is already ready on port {args.port}")
-        print("Run parser:")
-        print("python run_parser.py --browser-mode cdp --catalog-only --reset-state")
-        return 0
-
     browser = Path(args.browser).expanduser() if args.browser else find_browser()
     if browser is None:
         print("Chrome or Edge executable was not found.", file=sys.stderr)
