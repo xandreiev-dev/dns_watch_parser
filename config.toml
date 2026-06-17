@@ -1,6 +1,6 @@
 [parser]
 source = "dns"
-shop_id = 0
+shop_id = 6
 max_pages_per_brand = 1
 request_timeout = 60
 delay_min = 2
@@ -18,9 +18,9 @@ user_agents = [
 
 [browser]
 # DNS often returns anti-bot 401/403 for plain HTTP clients. Use "cdp" after
-# launching Chrome with --remote-debugging-port=9222 and logging in once by hand.
+# launching Chrome with --remote-debugging-port=9223 and logging in once by hand.
 mode = "http" # http, playwright, cdp
-cdp_url = "http://127.0.0.1:9222"
+cdp_url = "http://127.0.0.1:9223"
 storage_state_path = "tmp/state/dns_browser_state.json"
 page_wait_until = "domcontentloaded"
 page_wait_selector = ""
@@ -34,8 +34,8 @@ browser_connect_timeout = 30
 
 [output]
 dir = "brand_exports"
-filename_prefix = "dns_watch"
-include_timestamp = true
+filename_prefix = "DNS_watch_ru"
+include_timestamp = false
 
 [tmp]
 dir = "tmp"

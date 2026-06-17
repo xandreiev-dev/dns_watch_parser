@@ -40,7 +40,7 @@ class ParserSettings:
 @dataclass(slots=True)
 class BrowserSettings:
     mode: str = "http"
-    cdp_url: str = "http://127.0.0.1:9222"
+    cdp_url: str = "http://127.0.0.1:9223"
     storage_state_path: Path = Path("tmp/state/dns_browser_state.json")
     page_wait_until: str = "domcontentloaded"
     page_wait_selector: str = ""

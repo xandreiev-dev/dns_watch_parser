@@ -4,9 +4,14 @@ import logging
 import random
 import asyncio
 import threading
+import time
+import json
+import socket
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
+from urllib.parse import urlparse
+from urllib.parse import unquote
 
 import httpx
 
@@ -25,7 +30,7 @@ class BrowserClient:
     use_playwright_fallback: bool = False
     headless: bool = True
     browser_mode: str = "http"
-    cdp_url: str = "http://127.0.0.1:9222"
+    cdp_url: str = "http://127.0.0.1:9223"
     storage_state_path: Path | None = None
     page_wait_until: str = "domcontentloaded"
     page_wait_selector: str = ""
@@ -46,7 +51,7 @@ class BrowserClient:
     def __post_init__(self) -> None:
         self.rate_limiter = self.rate_limiter or RateLimiter()
         self.retry_policy = self.retry_policy or RetryPolicy()
-        self._client = httpx.Client(follow_redirects=True, timeout=self.timeout)
+        self._client = httpx.Client(follow_redirects=True, timeout=self.timeout, trust_env=False)
         self.browser_mode = (self.browser_mode or "http").lower().strip()
 
     def close(self) -> None:
@@ -98,12 +103,35 @@ class BrowserClient:
             return []
         return self._run_browser_card_fetch(url, card_selector, link_selector)
 
-    def check_health(self) -> None:
+    def check_health(self, expected_url: str = "") -> None:
         if self.browser_mode != "cdp":
             return
-        url = self.cdp_url.rstrip("/") + "/json/version"
-        response = self._client.get(url, timeout=self.browser_connect_timeout)
-        response.raise_for_status()
+        base_url = self.cdp_url.rstrip("/")
+        tabs: list[dict] = []
+        last_exc: Exception | None = None
+        for attempt in range(max(1, self.browser_retries + 1)):
+            try:
+                _get_cdp_json(base_url + "/json/version", self.browser_connect_timeout)
+                if not expected_url:
+                    return
+
+                tabs = _get_cdp_json(base_url + "/json", self.browser_connect_timeout)
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt >= self.browser_retries:
+                    raise
+                time.sleep(2)
+
+        if last_exc is not None and not tabs:
+            raise last_exc
+        page_urls = [tab.get("url", "") for tab in tabs if tab.get("type") == "page"]
+        healthy_urls = [url for url in page_urls if url and not url.startswith("chrome-error://")]
+        if not any(_same_page_url(url, expected_url) for url in healthy_urls):
+            raise RuntimeError(
+                "CDP is alive, but the expected DNS catalog tab is not ready. "
+                f"Expected: {expected_url}. Open tabs: {', '.join(page_urls) or 'none'}"
+            )
 
     def _ensure_browser_page(self):
         if self._page is not None:
@@ -279,6 +307,14 @@ class BrowserClient:
             page = None
             try:
                 browser, context, page = await self._open_async_page(chromium, url)
+                if self.reuse_page:
+                    await page.goto(url, wait_until=self.page_wait_until, timeout=self.timeout * 1000)
+                try:
+                    await page.wait_for_selector(card_selector, timeout=self.timeout * 1000)
+                except Exception as exc:
+                    logger.debug("Card selector wait failed for %s: %s", card_selector, exc)
+                if self.extra_wait_ms > 0:
+                    await page.wait_for_timeout(self.extra_wait_ms)
                 await page.keyboard.press("Home")
                 await page.wait_for_timeout(500)
 
@@ -297,7 +333,10 @@ class BrowserClient:
                         item_url = item.get("url") if isinstance(item, dict) else ""
                         item_html = item.get("html") if isinstance(item, dict) else ""
                         if item_url and item_html:
-                            cards_by_url.setdefault(item_url.split("?")[0], item_html)
+                            normalized_url = item_url.split("?")[0]
+                            previous_html = cards_by_url.get(normalized_url, "")
+                            if _is_richer_card_html(item_html, previous_html):
+                                cards_by_url[normalized_url] = item_html
                     stale_steps = stale_steps + 1 if len(cards_by_url) == before else 0
                     if stale_steps >= 10 and cards_by_url:
                         break
@@ -408,14 +447,75 @@ def _looks_like_blocked_page(html: str) -> bool:
     return "__qrator" in lowered or "qauth" in lowered or ("dns-shop" in lowered and "/product/" not in lowered)
 
 
+def _is_richer_card_html(candidate: str, current: str) -> bool:
+    if not current:
+        return True
+    candidate_score = _card_html_score(candidate)
+    current_score = _card_html_score(current)
+    return candidate_score > current_score or (candidate_score == current_score and len(candidate) > len(current))
+
+
+def _card_html_score(html: str) -> int:
+    lowered = html.lower()
+    score = len(html)
+    for token in ("product-buy__price", "₽", "в наличии", "доставим", "доставка", "рейтинг", "отзыв"):
+        if token in lowered:
+            score += 5000
+    return score
+
+
 def _normalized_url(url: str) -> str:
     return (url or "").split("#", 1)[0].rstrip("/")
 
 
+def _get_cdp_json(url: str, timeout: int):
+    parsed = urlparse(url)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 80
+    path = parsed.path or "/"
+    if parsed.query:
+        path += f"?{parsed.query}"
+
+    request = (
+        f"GET {path} HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        "Connection: close\r\n"
+        "Accept: application/json\r\n"
+        "\r\n"
+    ).encode("ascii")
+    with socket.create_connection((host, port), timeout=timeout) as connection:
+        connection.settimeout(timeout)
+        connection.sendall(request)
+        chunks: list[bytes] = []
+        while True:
+            chunk = connection.recv(65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            raw = b"".join(chunks)
+            headers, separator, body = raw.partition(b"\r\n\r\n")
+            if separator and len(body) >= _content_length(headers):
+                break
+
+    raw = b"".join(chunks)
+    _, _, body = raw.partition(b"\r\n\r\n")
+    return json.loads(body.decode("utf-8"))
+
+
+def _content_length(headers: bytes) -> int:
+    for line in headers.splitlines():
+        if line.lower().startswith(b"content-length:"):
+            return int(line.split(b":", 1)[1].strip())
+    return 0
+
+
+def _same_page_url(left: str, right: str) -> bool:
+    return unquote(_normalized_url(left)) == unquote(_normalized_url(right))
+
+
 def _find_matching_page(contexts, url: str):
-    normalized = _normalized_url(url)
     for context in contexts:
         for page in context.pages:
-            if _normalized_url(page.url) == normalized:
+            if _same_page_url(page.url, url):
                 return page
     return None

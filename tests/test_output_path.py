@@ -12,4 +12,6 @@ def test_build_output_path_uses_timestamp_by_default(tmp_path):
 def test_build_output_path_can_use_date_only(tmp_path):
     path = build_output_path(tmp_path, "dns_watch", include_timestamp=False)
 
-    assert path.name.count("_") == 2
+    assert path.name.startswith("dns_watch_")
+    assert path.name.endswith(".xlsx")
+    assert len(path.stem) == len("dns_watch_20260615")

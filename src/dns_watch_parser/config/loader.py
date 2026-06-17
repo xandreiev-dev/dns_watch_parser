@@ -48,7 +48,7 @@ def load_settings(path: str | Path = "config.toml") -> Settings:
 
     browser = BrowserSettings(
         mode=env_mode or browser_raw.get("mode", "http"),
-        cdp_url=env_cdp_url or browser_raw.get("cdp_url", "http://127.0.0.1:9222"),
+        cdp_url=env_cdp_url or browser_raw.get("cdp_url", "http://127.0.0.1:9223"),
         storage_state_path=_path(project_root, browser_raw.get("storage_state_path", "tmp/state/dns_browser_state.json")),
         page_wait_until=browser_raw.get("page_wait_until", "domcontentloaded"),
         page_wait_selector=browser_raw.get("page_wait_selector", ""),

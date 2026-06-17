@@ -20,7 +20,7 @@ def build_output_path(
     ensure_dir(output_dir)
     suffix = f"_{safe_slug(brand)}" if brand else ""
     now = datetime.now()
-    stamp = now.strftime("%Y-%m-%d_%H-%M-%S") if include_timestamp else now.date().isoformat()
+    stamp = now.strftime("%Y-%m-%d_%H-%M-%S") if include_timestamp else now.strftime("%Y%m%d")
     return Path(output_dir) / f"{prefix}{suffix}_{stamp}.xlsx"
 
 

@@ -23,14 +23,14 @@ mode is to run Chrome manually, log in/open DNS once, and let the parser reuse
 that browser profile through CDP:
 
 ```powershell
-chrome.exe --remote-debugging-port=9222 --user-data-dir=C:\work\dns_watch_parser\tmp\chrome-profile
+chrome.exe --remote-debugging-port=9223 --user-data-dir=C:\work\dns_watch_parser\tmp\chrome-profile
 python run_parser.py --browser-mode cdp --limit 50
 ```
 
 Or use the helper:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\start_chrome_cdp.ps1
+python scripts\start_chrome_cdp.py
 ```
 
 If Playwright browser binaries are missing:
@@ -61,7 +61,7 @@ The default config targets the DNS search page for smart watches and bracelets.
 DNS loads this page lazily while scrolling, so `scroll_steps` is intentionally
 high enough to reach the full search result set shown by the site.
 If a long run leaves Chrome tabs at `chrome-error://chromewebdata/`, close the
-CDP Chrome window and start it again with `scripts\start_chrome_cdp.ps1`.
+CDP Chrome window and start it again with `python scripts\start_chrome_cdp.py`.
 
 If some cards fail, inspect `tmp/state/dns_parser_state.json`. It stores both
 `failed_urls` and `failed_reasons`. To retry only failed cards:

@@ -78,8 +78,11 @@ def main(argv: list[str] | None = None) -> int:
         browser_retries=settings.browser.browser_retries,
         browser_connect_timeout=settings.browser.browser_connect_timeout,
     )
+    expected_cdp_url = ""
+    if browser_mode == "cdp" and settings.start_urls:
+        expected_cdp_url = settings.start_urls[0]
     try:
-        client.check_health()
+        client.check_health(expected_url=expected_cdp_url)
     except Exception as exc:
         client.close()
         logger.error("Browser preflight failed: %s", exc)
@@ -92,12 +95,21 @@ def main(argv: list[str] | None = None) -> int:
     if not args.dry_run:
         notifier.send_message(f"DNS Watch Parser started. Output: {output_path}")
 
-    writer = StreamingXlsxWriter(output_path)
+    writer: StreamingXlsxWriter | None = None
     started_at = datetime.now(timezone.utc)
     total_urls = 0
     error_samples: list[str] = []
     consecutive_error_key = ""
     consecutive_error_count = 0
+
+    def ensure_writer() -> StreamingXlsxWriter:
+        nonlocal writer
+        if writer is None:
+            writer = StreamingXlsxWriter(output_path)
+        return writer
+
+    def exported_rows() -> int:
+        return writer.rows_written if writer is not None else 0
 
     try:
         catalog = CatalogParser(
@@ -126,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
             for record in records:
                 if record.product_url in processed:
                     continue
-                writer.append(record)
+                ensure_writer().append(record)
                 state_store.mark_processed(state, record.product_url)
                 state_store.clear_failed(state, record.product_url)
                 processed = state.processed_set
@@ -153,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.brand and record.brand.lower() != args.brand.lower():
                     state_store.mark_processed(state, url)
                     continue
-                writer.append(record)
+                ensure_writer().append(record)
                 state_store.mark_processed(state, url)
                 state_store.clear_failed(state, url)
                 processed = state.processed_set
@@ -169,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     consecutive_error_key = error_key
                     consecutive_error_count = 1
-                if writer.rows_written == 0 and consecutive_error_count >= 3:
+                if exported_rows() == 0 and consecutive_error_count >= 3:
                     logger.error(
                         "Stopping early after %s identical startup failures: %s",
                         consecutive_error_count,
@@ -177,26 +189,33 @@ def main(argv: list[str] | None = None) -> int:
                     )
                     break
     finally:
-        writer.close()
+        if writer is not None:
+            writer.close()
         client.close()
 
     finished_at = datetime.now(timezone.utc)
+    rows_written = exported_rows()
     summary = format_summary(
         started_at=started_at,
         finished_at=finished_at,
         total_urls=total_urls,
         processed=len(state.processed_urls),
         failed=len(state.failed_urls),
-        exported_rows=writer.rows_written,
+        exported_rows=rows_written,
         output_path=output_path,
     )
     logger.info("\n%s", summary)
+    exit_code = 0
+    if total_urls == 0 and rows_written == 0:
+        logger.error("No records were exported. Check the CDP Chrome tab and DNS catalog loading before rerun.")
+        exit_code = 3
     if not args.dry_run:
         if error_samples:
             logger.info("Error samples:\n%s", "\n".join(error_samples))
         notifier.send_message(summary)
-        notifier.send_document(output_path, caption="DNS watch parser XLSX")
-    return 0
+        if rows_written > 0 and output_path.exists():
+            notifier.send_document(output_path, caption="DNS watch parser XLSX")
+    return exit_code
 
 
 def _error_key(exc: Exception) -> str:
