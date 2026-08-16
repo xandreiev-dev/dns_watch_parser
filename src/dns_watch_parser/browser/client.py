@@ -307,7 +307,7 @@ class BrowserClient:
             page = None
             try:
                 browser, context, page = await self._open_async_page(chromium, url)
-                if self.reuse_page:
+                if self.reuse_page and _normalized_url(page.url) != _normalized_url(url):
                     await page.goto(url, wait_until=self.page_wait_until, timeout=self.timeout * 1000)
                 try:
                     await page.wait_for_selector(card_selector, timeout=self.timeout * 1000)

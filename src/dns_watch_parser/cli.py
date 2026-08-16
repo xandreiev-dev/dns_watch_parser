@@ -28,6 +28,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retry-failed", action="store_true", help="Process URLs from failed_urls checkpoint first")
     parser.add_argument("--no-telegram", action="store_true", help="Disable Telegram for this run")
     parser.add_argument("--catalog-only", action="store_true", help="Export data directly from catalog cards")
+    parser.add_argument(
+        "--min-exported-rows",
+        type=int,
+        default=0,
+        help="Fail the run and keep the previous XLSX when fewer rows are exported",
+    )
     parser.add_argument("--log-level", default="INFO", help="Logging level")
     return parser
 
@@ -101,6 +107,8 @@ def main(argv: list[str] | None = None) -> int:
     error_samples: list[str] = []
     consecutive_error_key = ""
     consecutive_error_count = 0
+    run_completed = False
+    low_export_rows = False
 
     def ensure_writer() -> StreamingXlsxWriter:
         nonlocal writer
@@ -188,9 +196,19 @@ def main(argv: list[str] | None = None) -> int:
                         consecutive_error_key,
                     )
                     break
+        run_completed = True
     finally:
         if writer is not None:
-            writer.close()
+            should_commit = run_completed
+            if should_commit and args.min_exported_rows > 0 and writer.rows_written < args.min_exported_rows:
+                low_export_rows = True
+                should_commit = False
+                logger.error(
+                    "Exported rows below minimum: rows=%s, minimum=%s. Keeping previous XLSX untouched.",
+                    writer.rows_written,
+                    args.min_exported_rows,
+                )
+            writer.close(commit=should_commit)
         client.close()
 
     finished_at = datetime.now(timezone.utc)
@@ -209,11 +227,13 @@ def main(argv: list[str] | None = None) -> int:
     if total_urls == 0 and rows_written == 0:
         logger.error("No records were exported. Check the CDP Chrome tab and DNS catalog loading before rerun.")
         exit_code = 3
+    elif low_export_rows:
+        exit_code = 4
     if not args.dry_run:
         if error_samples:
             logger.info("Error samples:\n%s", "\n".join(error_samples))
         notifier.send_message(summary)
-        if rows_written > 0 and output_path.exists():
+        if exit_code == 0 and rows_written > 0 and output_path.exists():
             notifier.send_document(output_path, caption="DNS watch parser XLSX")
     return exit_code
 

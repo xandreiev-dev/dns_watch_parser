@@ -1,8 +1,8 @@
 [parser]
 source = "dns"
 shop_id = 6
-max_pages_per_brand = 1
-request_timeout = 60
+max_pages_per_brand = 20
+request_timeout = 180
 delay_min = 2
 delay_max = 6
 max_retries = 5
@@ -30,7 +30,7 @@ scroll_steps = 90
 proxy_server = ""
 reuse_page = true
 browser_retries = 1
-browser_connect_timeout = 30
+browser_connect_timeout = 60
 
 [output]
 dir = "brand_exports"

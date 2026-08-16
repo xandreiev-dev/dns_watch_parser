@@ -59,6 +59,25 @@ def test_extract_catalog_records_does_not_use_display_inches_as_case_size():
     assert record.case_size == ""
 
 
+def test_extract_catalog_records_keeps_current_and_old_price_separate():
+    html = """
+    <div class="catalog-product">
+      <a class="catalog-product__name ui-link ui-link_black" href="/product/abc123456789abcd/smart-casy-xiaomi-watch-s4/">
+        Смарт-часы Xiaomi Watch S4 41 mm
+      </a>
+      <div class="product-buy__price">
+        15 999 ₽
+        <span class="product-buy__prev">19 599 ₽</span>
+      </div>
+    </div>
+    """
+
+    record = extract_catalog_records(html, known_brands=["Xiaomi"])[0]
+
+    assert record.price == 15999
+    assert record.old_price == 19599
+
+
 def test_collect_catalog_records_stops_on_duplicate_pages():
     html = """
     <div class="catalog-product">

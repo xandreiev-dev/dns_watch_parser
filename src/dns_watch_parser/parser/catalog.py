@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 from dns_watch_parser.browser import BrowserClient
 from dns_watch_parser.models import ProductRecord
 from dns_watch_parser.models.product import json_dumps
-from dns_watch_parser.normalizers import extract_article, extract_delivery_days, normalize_brand, normalize_price
+from dns_watch_parser.normalizers import extract_article, extract_delivery_days, normalize_brand, normalize_price, repair_concatenated_price
 from dns_watch_parser.normalizers.text import clean_text
 
 from .pagination import page_url
@@ -32,6 +32,7 @@ class CatalogParser:
         pages = range(1, max_pages + 1) if max_pages and max_pages > 0 else range(1, 1000)
         for start_url in start_urls:
             empty_pages = 0
+            logger.info("Collecting DNS product URLs from %s", start_url)
             for page in pages:
                 current_url = page_url(start_url, page)
                 try:
@@ -44,7 +45,9 @@ class CatalogParser:
                 urls = extract_product_urls(html, start_url)
                 if not urls:
                     empty_pages += 1
+                    logger.info("Catalog URL page %s: no product URLs found (empty_pages=%s)", page, empty_pages)
                     if empty_pages >= 2 or page == 1:
+                        logger.info("Stopping URL collection at page %s: no product URLs", page)
                         break
                     continue
                 new_urls = 0
@@ -53,13 +56,23 @@ class CatalogParser:
                         seen[url] = None
                         new_urls += 1
                     if limit and len(seen) >= limit:
+                        logger.info("Catalog URL page %s: reached limit=%s, total_urls=%s", page, limit, len(seen))
                         return list(seen)
+                logger.info(
+                    "Catalog URL page %s: found=%s, new=%s, total=%s",
+                    page,
+                    len(urls),
+                    new_urls,
+                    len(seen),
+                )
                 if new_urls == 0:
                     empty_pages += 1
                     if empty_pages >= 2:
+                        logger.info("Stopping URL collection at page %s: duplicate pages reached", page)
                         break
                 else:
                     empty_pages = 0
+            logger.info("Finished DNS URL collection: total_urls=%s", len(seen))
         return list(seen)
 
     def collect_catalog_records(self, start_urls: list[str], max_pages: int = 0, limit: int | None = None) -> list[ProductRecord]:
@@ -67,6 +80,7 @@ class CatalogParser:
         pages = range(1, max_pages + 1) if max_pages and max_pages > 0 else range(1, 1000)
         for start_url in start_urls:
             empty_pages = 0
+            logger.info("Collecting DNS catalog records from %s", start_url)
             for page in pages:
                 current_url = page_url(start_url, page)
                 try:
@@ -86,7 +100,9 @@ class CatalogParser:
                 )
                 if not page_records:
                     empty_pages += 1
+                    logger.info("Catalog record page %s: no product cards parsed (empty_pages=%s)", page, empty_pages)
                     if empty_pages >= 2 or page == 1:
+                        logger.info("Stopping record collection at page %s: no product cards", page)
                         break
                     continue
                 new_records = 0
@@ -95,13 +111,23 @@ class CatalogParser:
                         records[record.product_url] = record
                         new_records += 1
                     if limit and len(records) >= limit:
+                        logger.info("Catalog record page %s: reached limit=%s, total_records=%s", page, limit, len(records))
                         return list(records.values())
+                logger.info(
+                    "Catalog record page %s: parsed=%s, new=%s, total=%s",
+                    page,
+                    len(page_records),
+                    new_records,
+                    len(records),
+                )
                 if new_records == 0:
                     empty_pages += 1
                     if empty_pages >= 2:
+                        logger.info("Stopping record collection at page %s: duplicate pages reached", page)
                         break
                 else:
                     empty_pages = 0
+            logger.info("Finished DNS record collection: total_records=%s", len(records))
         return list(records.values())
 
 
@@ -167,8 +193,7 @@ def _record_from_card(card, base_url: str, known_brands: list[str], source: str,
     if not product_url or not title:
         return None
 
-    price = normalize_price(_node_text(card, ".product-buy__price"))
-    old_price = normalize_price(_node_text(card, ".product-buy__prev"))
+    price, old_price = _catalog_prices(card)
     rating, reviews = _parse_rating(_node_text(card, ".catalog-product__rating"))
     image_url = _image_url(card, base_url)
     delivery_text = _catalog_delivery_text(card)
@@ -209,6 +234,24 @@ def _record_from_card(card, base_url: str, known_brands: list[str], source: str,
 def _node_text(card, selector: str) -> str:
     node = card.select_one(selector)
     return clean_text(node.get_text(" ", strip=True)) if node else ""
+
+
+def _catalog_prices(card) -> tuple[int | None, int | None]:
+    old_price = normalize_price(_node_text(card, ".product-buy__prev"))
+    price = normalize_price(_node_text_without(card, ".product-buy__price", [".product-buy__prev"]))
+    return repair_concatenated_price(price, old_price), old_price
+
+
+def _node_text_without(card, selector: str, excluded_selectors: list[str]) -> str:
+    node = card.select_one(selector)
+    if not node:
+        return ""
+    clone = BeautifulSoup(str(node), "html.parser")
+    root = clone.select_one(selector) or clone
+    for excluded in excluded_selectors:
+        for child in root.select(excluded):
+            child.decompose()
+    return clean_text(root.get_text(" ", strip=True))
 
 
 def _image_url(card, base_url: str) -> str:

@@ -1,7 +1,7 @@
 from .article import extract_article
 from .brand import normalize_brand
 from .delivery import extract_delivery_days
-from .price import normalize_price
+from .price import MAX_PRICE_RUB, normalize_price, repair_concatenated_price
 from .warranty import extract_warranty_days
 
 __all__ = [
@@ -10,4 +10,6 @@ __all__ = [
     "extract_warranty_days",
     "normalize_brand",
     "normalize_price",
+    "repair_concatenated_price",
+    "MAX_PRICE_RUB",
 ]
