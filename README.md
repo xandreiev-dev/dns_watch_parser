@@ -69,6 +69,13 @@ After a run, validate the matcher-ready XLSX before import:
 python scripts\audit_price_quality.py brand_exports\DNS_watch_ru_YYYYMMDD.xlsx
 ```
 
+For a broader health check, inspect recent XLSX files and the scheduled run
+log together:
+
+```powershell
+python scripts\diagnose_exports.py
+```
+
 The parser also stops catalog pagination when a page contains no new products,
 so repeated DNS pages do not turn into a long no-op run.
 During catalog collection, the log prints per-page progress:
@@ -97,7 +104,10 @@ instance when finished.
 
 The BAT files use their own folder as the project root, so the same files work
 from `C:\work\dns_watch_parser` locally and from `C:\parsers\dns_watch_parser`
-on the server.
+on the server. They also run the explicit `.venv\Scripts\python.exe`, which
+keeps Task Scheduler from accidentally using a different Python installation.
+Each scheduled run logs a small runtime fingerprint: project path, Python
+version, git revision when available, and hashes of the key parser files.
 
 Task Scheduler example:
 

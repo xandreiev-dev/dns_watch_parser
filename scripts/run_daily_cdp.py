@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import subprocess
 import sys
@@ -8,6 +9,7 @@ import time
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
+from urllib.parse import unquote
 
 
 DEFAULT_START_URL = (
@@ -56,6 +58,8 @@ def main() -> int:
     if browser is None:
         print("Chrome or Edge executable was not found.", file=sys.stderr)
         return 1
+
+    print_runtime_fingerprint(project_dir)
 
     cdp_url = f"http://127.0.0.1:{args.port}"
     chrome_process: subprocess.Popen | None = None
@@ -192,7 +196,54 @@ def _read_cdp_json(url: str):
 
 
 def _same_page_url(left: str, right: str) -> bool:
-    return (left or "").split("#", 1)[0].rstrip("/") == (right or "").split("#", 1)[0].rstrip("/")
+    return unquote((left or "").split("#", 1)[0].rstrip("/")) == unquote(
+        (right or "").split("#", 1)[0].rstrip("/")
+    )
+
+
+def print_runtime_fingerprint(project_dir: Path) -> None:
+    print(f"Project: {project_dir}")
+    print(f"Python: {sys.executable}")
+    print(f"Python version: {sys.version.split()[0]}")
+    revision = current_git_revision(project_dir)
+    if revision:
+        print(f"Git revision: {revision}")
+    else:
+        print("Git revision: unavailable")
+
+    for relative_path in (
+        "config.toml",
+        "src/dns_watch_parser/browser/client.py",
+        "src/dns_watch_parser/parser/catalog.py",
+        "src/dns_watch_parser/storage/exports.py",
+    ):
+        path = project_dir / relative_path
+        print(f"Fingerprint {relative_path}: {file_fingerprint(path)}")
+
+
+def current_git_revision(project_dir: Path) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(project_dir),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def file_fingerprint(path: Path) -> str:
+    if not path.exists():
+        return "missing"
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()[:12]
 
 
 def stop_cdp_chrome(port: int) -> None:
